@@ -1,0 +1,33 @@
+{
+    "name": "eyika/atom-octane",
+    "description": "Octane-style persistent worker for the Atom framework — boot the application once, serve many requests, reset per-request state in between.",
+    "type": "library",
+    "keywords": ["atom", "octane", "worker", "performance"],
+    "license": "MIT",
+    "require": {
+        "php": ">=8.1",
+        "eyika/atom-framework": "*"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^11.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Eyika\\Atom\\Octane\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Eyika\\Atom\\Octane\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "atom": {
+            "providers": [
+                "Eyika\\Atom\\Octane\\OctaneServiceProvider"
+            ]
+        }
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
+}
