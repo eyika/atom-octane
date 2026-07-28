@@ -31,10 +31,20 @@ use Throwable;
  */
 class Worker
 {
+    /** Fallback snapshot key used when the app declares no route maps. */
+    protected const DEFAULT_SNAPSHOT = "\0default";
+
     protected Application $app;
 
-    /** The route table captured once at boot and restored before each request. */
-    protected array $routeSnapshot = [];
+    /**
+     * Route table snapshot PER map (keyed by map name). Each map's route file is loaded
+     * in isolation at boot so that maps sharing a path (e.g. both web.php and api.php
+     * define "/") don't overwrite each other in one merged table — mirroring how
+     * Server::handle loads only the resolved map's file per request.
+     *
+     * @var array<string, array<string,mixed>>
+     */
+    protected array $routeSnapshots = [];
     protected bool $booted = false;
 
     public function __construct(Application $app)
@@ -62,12 +72,22 @@ class Worker
         new Server($this->app);           // registers response/request/session facades
         $this->app->registerProviders();  // boots providers → RouteServiceProvider maps
 
-        foreach (Route::maps() as $map) {
-            if ($map->getFile() !== null) {
+        $mapsWithFiles = array_filter(Route::maps(), fn ($map) => $map->getFile() !== null);
+
+        if ($mapsWithFiles) {
+            // Load each map's route file in isolation and snapshot it separately, so shared
+            // paths across maps don't overwrite each other in one merged table.
+            foreach ($mapsWithFiles as $map) {
+                Route::clearRegistered();
                 Route::loadRoutesFile($map->getName(), $map->getFile());
+                $this->routeSnapshots[$map->getName()] = Route::getRoutes();
             }
+            Route::clearRegistered();
+        } else {
+            // No map-driven route files (e.g. routes registered directly) — snapshot the
+            // whole table and restore it for every request under the fallback key.
+            $this->routeSnapshots[self::DEFAULT_SNAPSHOT] = Route::getRoutes();
         }
-        $this->routeSnapshot = Route::getRoutes();
 
         BaseResponse::captureOutput(true); // capture responses instead of emitting them
         $this->booted = true;
@@ -85,7 +105,6 @@ class Worker
         $this->boot();
 
         BaseResponse::resetCapture();
-        Route::setRoutes($this->routeSnapshot); // restore the immutable route table
 
         // Fresh response objects per request: they're shared mutable singletons, so a
         // prior request's status/headers/body would otherwise bleed into this one.
@@ -98,11 +117,18 @@ class Worker
 
         try {
             $map = Route::resolveMapFor($request);
-            if ($map !== null && $map->getFile() !== null) {
-                Route::isApiRequest($map->isStateless());
-                if ($middleware = $map->getMiddleware()) {
-                    $this->loadMiddlewares($middleware);
+            if ($map !== null) {
+                // Restore only the resolved map's routes (see $routeSnapshots).
+                Route::setRoutes($this->routeSnapshots[$map->getName()] ?? []);
+                if ($map->getFile() !== null) {
+                    Route::isApiRequest($map->isStateless());
+                    if ($middleware = $map->getMiddleware()) {
+                        $this->loadMiddlewares($middleware);
+                    }
                 }
+            } else {
+                // No map matched (an app with no maps) — restore the fallback table.
+                Route::setRoutes($this->routeSnapshots[self::DEFAULT_SNAPSHOT] ?? []);
             }
             Route::dispatch($request);
         } catch (Throwable $e) {
