@@ -7,15 +7,22 @@ use Eyika\Atom\Octane\Console\ServeCommand;
 
 /**
  * Auto-discovered via composer.json extra.atom.providers (PKG-02): installing this
- * package into an Atom app immediately exposes the `octane:serve` command — no manual
- * provider registration. This is the proof that the framework's package-discovery works.
+ * package exposes the `octane:serve` command and merges config/octane.php (publishable
+ * with `php artisan vendor:publish --tag=octane-config`).
  */
 class OctaneServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        // The worker is resolvable from the container if an app wants to embed it.
-        $this->app->bind(Worker::class, fn ($app) => new Worker($app));
+        $this->mergeConfigFrom(__DIR__ . '/../config/octane.php', 'octane');
+
+        $this->app->bind(Worker::class, function ($app) {
+            return new Worker(
+                $app,
+                (int) config('octane.max_requests', 500),
+                (int) config('octane.max_memory', 0)
+            );
+        });
     }
 
     public function boot(): void
@@ -23,5 +30,9 @@ class OctaneServiceProvider extends ServiceProvider
         $this->commands([
             ServeCommand::class,
         ]);
+
+        $this->publishes([
+            __DIR__ . '/../config/octane.php' => base_path('config/octane.php'),
+        ], 'octane-config');
     }
 }

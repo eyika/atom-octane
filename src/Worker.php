@@ -47,14 +47,43 @@ class Worker
     protected array $routeSnapshots = [];
     protected bool $booted = false;
 
-    public function __construct(Application $app)
+    /** Requests served since boot, and the recycling thresholds (0 = unlimited). */
+    protected int $requests = 0;
+    protected int $maxRequests;
+    protected int $maxMemoryBytes;
+
+    public function __construct(Application $app, int $maxRequests = 500, int $maxMemoryMb = 0)
     {
         $this->app = $app;
+        $this->maxRequests = max(0, $maxRequests);
+        $this->maxMemoryBytes = max(0, $maxMemoryMb) * 1024 * 1024;
     }
 
     public function app(): Application
     {
         return $this->app;
+    }
+
+    /** How many requests this worker has served since boot. */
+    public function requestsHandled(): int
+    {
+        return $this->requests;
+    }
+
+    /**
+     * Whether the worker should be recycled (the process restarted) — it has served its
+     * request quota or crossed the memory ceiling. Long-lived PHP workers accumulate
+     * memory (fragmentation, caches, leaks in app/third-party code); recycling bounds it.
+     */
+    public function shouldRecycle(): bool
+    {
+        if ($this->maxRequests > 0 && $this->requests >= $this->maxRequests) {
+            return true;
+        }
+        if ($this->maxMemoryBytes > 0 && memory_get_usage(true) >= $this->maxMemoryBytes) {
+            return true;
+        }
+        return false;
     }
 
     /**
@@ -144,6 +173,8 @@ class Worker
         // The whole point of the worker: scrub every per-request static so the next
         // request starts clean against the same long-lived kernel.
         $this->app->flushRequestState();
+
+        $this->requests++;
 
         return $response;
     }
