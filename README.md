@@ -1,5 +1,9 @@
 # Atom Octane
 
+> 📖 **Documentation:** the canonical guide for this package lives in the Atom docs —
+> **[Official Packages → atom-octane](https://basttyydev.serv00.net/docs/beta/packages#atom-octane)**.
+> This README is a quick reference; the docs cover runtimes, config, and worker recycling in full.
+
 Supercharge the [Atom framework](https://github.com/eyika/atomframework) by serving it from
 a **persistent worker**: boot the application **once**, then serve many requests against the
 already-booted kernel, resetting per-request state in between. This is where the framework's
